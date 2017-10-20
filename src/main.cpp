@@ -1,10 +1,8 @@
-// GT_HelloWorldWin32.cpp  
-// compile with: /D_UNICODE /DUNICODE /DWIN32 /D_WINDOWS /c  
-
 #include "Particle.h"
 #include "Gas.h"
 
 const int timerPeriod = 10;
+
 // The main window class name.  
 static TCHAR szWindowClass[] = _T("win32app");
 
@@ -13,13 +11,14 @@ static TCHAR szTitle[] = _T("Win32 Guided Tour Application");
 
 HINSTANCE hInst;
 
+// Global gas object
 Gas gas(17);
 
-// Forward declarations of functions included in this code module:  
+// Forward declarations of functions included in this code module:
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+ATOM MyRegisterClass(HINSTANCE hInstance);
+BOOL InitInstance(HINSTANCE, int);
+INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
@@ -78,9 +77,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_TIMER:
 		{
-			RECT rect;
-			GetClientRect(hWnd, &rect);
-			gas.updateParticles(&rect, timerPeriod);
+			HDC hdc = GetDC(hWnd);
+			SetMapMode(hdc, MM_LOMETRIC);
+
+			RECT lpRect;
+			GetClientRect(hWnd, &lpRect);
+			DPtoLP(hdc, (LPPOINT)& lpRect, 2);
+			gas.updateParticles(lpRect.right, -lpRect.bottom, timerPeriod);
 			InvalidateRect(hWnd, NULL, FALSE);
 		}
 		break;
@@ -90,15 +93,16 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			PAINTSTRUCT ps;
 			HDC hdc = BeginPaint(hWnd, &ps);
 
-			//SetMapMode(hdc, MM_TEXT);
+			SetMapMode(hdc, MM_LOMETRIC);
 
-			RECT rect;
-			GetClientRect(hWnd, &rect);
+			RECT lpRect;
+			GetClientRect(hWnd, &lpRect);
+			DPtoLP(hdc, (LPPOINT)& lpRect, 2);
 
 			SelectObject(hdc, GetStockObject(BLACK_BRUSH));
-			FillRect(hdc, &rect, (HBRUSH)GetStockObject(WHITE_BRUSH));
-			//Sleep(10);
-			gas.drawParticles(&hdc);
+			FillRect(hdc, &lpRect, (HBRUSH)GetStockObject(WHITE_BRUSH));
+
+			gas.drawParticles(hdc);
 
 			EndPaint(hWnd, &ps);
 			ShowCursor(TRUE);
@@ -174,9 +178,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	}
 
-	RECT rect;
-	GetClientRect(hWnd, &rect);
-	gas.initializeParticles(&rect);
+	gas.initializeParticles(&hWnd);
 
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);

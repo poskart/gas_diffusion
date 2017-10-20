@@ -11,13 +11,13 @@ public:
 	Gas(int partCount);
 	~Gas() {}
 
-	void initializeParticles(RECT * rect);
-	void drawParticles(HDC * contextHandle);
-	void updateParticles(RECT * rect, int timeDelta);
+	void initializeParticles(HWND * windowHandle);
+	void drawParticles(HDC hdc);
+	void updateParticles(int rightWall, int bottomWall, int timeDelta);
 	bool particlesCollide(const Particle & p1, const Particle & p2);
 	inline bool positionCollides(const double x, const double y, const int radius);
 	void handleParticlesCollision(Particle & p1, Particle & p2);
-	void handleCollisionWalls(Particle & p1, RECT * rect);
+	void handleCollisionWalls(Particle & p1, int width, int height);
 
 private:
 	std::vector<Particle> particles;

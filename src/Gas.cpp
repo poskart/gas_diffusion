@@ -18,35 +18,45 @@ Gas::Gas(int partCount)
 	Initialize particles positions and velocity
 	to random numbers.
 */
-void Gas::initializeParticles(RECT * rect)
+void Gas::initializeParticles(HWND * windowHandle)
 {
 	int randX, randY;
 	srand(time(NULL));
+
+	HDC hdc = GetDC(*windowHandle);
+	SetMapMode(hdc, MM_LOMETRIC);
+
+	RECT lpRect;
+	GetClientRect(*windowHandle, &lpRect);
+	DPtoLP(hdc, (LPPOINT)& lpRect, 2);
 
 	for(auto & p : particles)
 	{
 		// Choose position which does not collide with the other part.
 		do
 		{
-			randX = double(rand() % (rect->right - 2 * Particle::partDefaultRadius));
-			randY = double(rand() % (rect->bottom - 2 * Particle::partDefaultRadius));
+			randX = double(rand() % 
+				(lpRect.right - 2 * Particle::partDefaultRadius));
+			randY = -double(rand() % 
+				(lpRect.bottom - 2 * Particle::partDefaultRadius)) 
+				- 2 * Particle::partDefaultRadius;
 		} while (positionCollides(randX, randY, p.getRadius()));
 		
 		p.setXPos(randX);
 		p.setYPos(randY);
-		p.setXVel(.08);
-		p.setYVel(.05);
+		p.setXVel(double((rand() % 100)/200.0 - 0.25));
+		p.setYVel(double((rand() % 100) / 200.0 - 0.25));
 	}
 }
 
 /*
 	Draw particles in the given window context
 */
-void Gas::drawParticles(HDC * contextHandle)
+void Gas::drawParticles(HDC hdc)
 {
 	for(const auto & p : particles)
 	{
-		Ellipse(*contextHandle, int(p.getXPos()), int(p.getYPos()), 
+		Ellipse(hdc, int(p.getXPos()), int(p.getYPos()), 
 			int(p.getXPos()) + 2 * p.getRadius(), int(p.getYPos()) + 2 * p.getRadius());
 	}
 }
@@ -54,7 +64,7 @@ void Gas::drawParticles(HDC * contextHandle)
 /*
 	Update particles movement after timeDelta time period.
 */
-void Gas::updateParticles(RECT * rect, int timeDelta)
+void Gas::updateParticles(int width, int height, int timeDelta)
 {
 	Particle * p1 = nullptr, *p2 = nullptr;
 	for (int i = 0; i < particles.size(); ++i)
@@ -71,7 +81,7 @@ void Gas::updateParticles(RECT * rect, int timeDelta)
 				break;
 			}
 		}
-		handleCollisionWalls(*p1, rect);
+		handleCollisionWalls(*p1, width, height);
 		p1->updatePos(timeDelta);
 	}
 }
@@ -84,7 +94,6 @@ inline bool Gas::particlesCollide(const Particle & p1, const Particle & p2)
 	return (sqrt(pow(p2.getXPos() - p1.getXPos(), 2.0)
 		+ pow(p2.getYPos() - p1.getYPos(), 2.0))
 		<= 1.01*(p1.getRadius() + p2.getRadius()));
-
 }
 
 /*
@@ -93,7 +102,7 @@ inline bool Gas::particlesCollide(const Particle & p1, const Particle & p2)
 inline bool Gas::positionCollides(const double x, const double y, 
 	const int radius)
 {
-	for each (const Particle & p in particles)
+	for(const Particle & p : particles)
 	{
 		if ((sqrt(pow(x - p.getXPos(), 2.0)
 			+ pow(y - p.getYPos(), 2.0))
@@ -105,7 +114,13 @@ inline bool Gas::positionCollides(const double x, const double y,
 
 void Gas::handleParticlesCollision(Particle & p1, Particle & p2)
 {
-	double dotProd = (p2.getXVel() - p1.getXVel())*(p2.getXPos() - p1.getXPos()) + (p2.getYVel() - p1.getYVel())*(p2.getYPos() - p1.getYPos());
+	/*
+		Collision handling for elastic collision according to
+		https://en.wikipedia.org/wiki/Elastic_collision
+		(last equations in the article)
+	*/
+	double dotProd = (p2.getXVel() - p1.getXVel())*(p2.getXPos() - p1.getXPos()) 
+		+ (p2.getYVel() - p1.getYVel())*(p2.getYPos() - p1.getYPos());
 	double norm = p1.getRadius() + p2.getRadius();
 	p1.setXVel(p1.getXVel() - dotProd/norm/norm*(p1.getXPos() - p2.getXPos()));
 	p1.setYVel(p1.getYVel() - dotProd/norm/norm*(p1.getYPos() - p2.getYPos()));
@@ -114,18 +129,40 @@ void Gas::handleParticlesCollision(Particle & p1, Particle & p2)
 	p2.setYVel(p2.getYVel() - dotProd / norm / norm*(p2.getYPos() - p1.getYPos()));
 }
 
-void Gas::handleCollisionWalls(Particle & p1, RECT * rect)
+void Gas::handleCollisionWalls(Particle & p1, int width, int height)
 {
 	// Right wall and left wall
-	if (p1.getXPos() + 2 * p1.getRadius() >= rect->right ||
-		p1.getXPos() <= rect->left)
+	if (p1.getXPos() + 2 * p1.getRadius() >= width)
 	{
-		p1.setXVel(-p1.getXVel());
+		// if right wall moved and covered particle (at least half of it)
+		if (p1.getXPos() + p1.getRadius() >= width)
+			p1.setXPos(width - 2*p1.getRadius() - 1);
+		else    //normal bounce off the wall
+			p1.setXVel(-p1.getXVel());
+	}
+	else if (p1.getXPos() <= 0)
+	{
+		// if left wall moved and covered particle (at least half of it)
+		if (p1.getXPos() <= -p1.getRadius())
+			p1.setXPos(1);
+		else    //normal bounce off the wall
+			p1.setXVel(-p1.getXVel());
 	}
 	// Bottom wall and top wall
-	if (p1.getYPos() + 2 * p1.getRadius() >= rect->bottom ||
-		p1.getYPos() <= rect->top)
+	if (p1.getYPos() <= -height)
 	{
-		p1.setYVel(-p1.getYVel());
+		// if bottom wall moved and covered particle (at least half of it)
+		if (p1.getYPos() <= -height - p1.getRadius())
+			p1.setYPos(-height + 1);
+		else    //normal bounce off the wall
+			p1.setYVel(-p1.getYVel());
+	}
+	else if (p1.getYPos() >= -2*p1.getRadius())
+	{
+		// if top wall moved and covered particle (at least half of it)
+		if (p1.getYPos() + p1.getRadius() >= 0)
+			p1.setYPos(-1.0 - 2*p1.getRadius());
+		else	//normal bounce off the wall
+			p1.setYVel(-p1.getYVel());
 	}
 }
