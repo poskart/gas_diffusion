@@ -3,6 +3,10 @@
 #include <stdio.h>
 #include <shellapi.h>
 
+/*
+	Time period for timer to update particles
+	positions and refresh drawing
+*/
 const int timerPeriod = 10;
 
 // The main window class name.  
@@ -14,11 +18,17 @@ static TCHAR szTitle[] = _T("Win32 Guided Tour Application");
 // Application instance handle
 HINSTANCE hInst;
 
+// Global pointer to gas object
+Gas * gasPtr = nullptr;
+
 // Application ID used to communicate
 int appID;
+// Communicate IDs to register in the System (both ways)
+static UINT WM_GASAPP_LEFT_TO_RIGHT;
+static UINT WM_GASAPP_RIGHT_TO_LEFT;
+// Handle to window of the coupled application
+HWND coupledAppWindowHandle = nullptr;
 
-// Global gas object
-Gas gas(17);
 
 // Forward declarations of functions included in this code module:
 LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
@@ -26,6 +36,9 @@ ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
 
+/*
+	main()
+*/
 int CALLBACK WinMain(
 	_In_ HINSTANCE hInstance,
 	_In_ HINSTANCE hPrevInstance,
@@ -36,11 +49,13 @@ int CALLBACK WinMain(
 	// Some macros to mark hPrevIn..and lpCmd.. parameters as unused
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	
+	Gas gasObj;
+	gasPtr = &gasObj;	// Save gas object to global variable (pointer)
+
+	// Get application ID from command line
 	LPWSTR *szArglist;
 	int nArgs;
 	int i;
-
-	// Get application ID from command line
 	szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
 	if (NULL == szArglist)
 	{
@@ -49,6 +64,14 @@ int CALLBACK WinMain(
 	}
 	else
 		appID = _wtoi(szArglist[nArgs - 1]);
+
+	// Initialize left application with 10 gas particles
+	if (appID == 1)
+		gasObj.setParticlesCount(10);
+
+	// Register corresponding message
+	WM_GASAPP_LEFT_TO_RIGHT = RegisterWindowMessageA("LeftWindowToRightWindowMessage");
+	WM_GASAPP_RIGHT_TO_LEFT = RegisterWindowMessageA("RightWindowToLeftWindowMessage");
 
 	// Create and register window object
 	if (!MyRegisterClass(hInstance))
@@ -64,7 +87,7 @@ int CALLBACK WinMain(
 	if (!InitInstance(hInstance, nCmdShow))
 		return FALSE;
 
-	// Main message loop:  
+	// Main message loop (standard loop in windows API app):  
 	MSG msg;
 	while (GetMessage(&msg, NULL, 0, 0))
 	{
@@ -86,25 +109,30 @@ int CALLBACK WinMain(
 //  
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
-	PAINTSTRUCT ps;
-	HDC hdc;
-	TCHAR greeting[] = _T("Hello, World!");
-
 	switch (message)
 	{
 	case WM_TIMER:
 		{
-			HDC hdc = GetDC(hWnd);
-			SetMapMode(hdc, MM_LOMETRIC);
+			HDC hdc = GetDC(hWnd);	// get device context
+			SetMapMode(hdc, MM_LOMETRIC);	// set mode to required in project assumptions
 
+			// Rectangle to get window logical width and height
 			RECT lpRect;
 			GetClientRect(hWnd, &lpRect);
 			DPtoLP(hdc, (LPPOINT)& lpRect, 2);
-			gas.updateParticles(lpRect.right, -lpRect.bottom, timerPeriod);
+			gasPtr->updateParticles(lpRect.right, -lpRect.bottom, timerPeriod);
 			InvalidateRect(hWnd, NULL, FALSE);
+			
+			// Broadcast message - left app is looking for coupled (right) window
+			// and sends its (the left app) window handle hWnd
+			if (coupledAppWindowHandle == nullptr && appID == 1)
+			{
+				LRESULT res = SendMessage(HWND_BROADCAST, WM_GASAPP_LEFT_TO_RIGHT,
+					0, (LPARAM)hWnd);
+			}
 		}
 		break;
-		case WM_PAINT:
+	case WM_PAINT:
 		{
 			ShowCursor(FALSE);	// Hide cursor for a drawing moment
 			PAINTSTRUCT ps;
@@ -119,7 +147,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			SelectObject(hdc, GetStockObject(BLACK_BRUSH));
 			FillRect(hdc, &lpRect, (HBRUSH)GetStockObject(WHITE_BRUSH));
 
-			gas.drawParticles(hdc);
+			gasPtr->drawParticles(hdc);
 
 			EndPaint(hWnd, &ps);
 			ShowCursor(TRUE);
@@ -128,9 +156,36 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_DESTROY:
 		PostQuitMessage(0);
 		break;
-	default:
+	}
+	if(message == WM_GASAPP_LEFT_TO_RIGHT && appID == 2)
+	{
+		// Get broadcast message from left app
+		if (coupledAppWindowHandle == nullptr && wParam == 0 && lParam != 0)
+		{
+			coupledAppWindowHandle = (HWND)lParam;
+			LRESULT res = SendMessage(coupledAppWindowHandle, WM_GASAPP_RIGHT_TO_LEFT,
+				0, (LPARAM)hWnd);	// Send right app hWnd to left app
+		}
+		else   // get regular message from left app
+		{
+
+		}
+	}
+	else if(message == WM_GASAPP_RIGHT_TO_LEFT && appID == 1)
+	{
+		// Get reply (for broadcast) message from right app
+		if (coupledAppWindowHandle == nullptr && wParam == 0 && lParam != 0)
+		{
+			coupledAppWindowHandle = (HWND)lParam;
+		}
+		else
+		{
+
+		}
+	}
+	else  // Default message handle for Windows
+	{
 		return DefWindowProc(hWnd, message, wParam, lParam);
-		break;
 	}
 
 	return 0;
@@ -195,7 +250,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		return FALSE;
 	}
 
-	gas.initializeParticles(&hWnd);
+	gasPtr->initializeParticles(&hWnd);
 
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);

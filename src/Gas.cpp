@@ -14,6 +14,13 @@ Gas::Gas(int partCount)
 		Particle(0.0, 0.0, 0.0, 0.0, Particle::partDefaultRadius));
 }
 
+void Gas::setParticlesCount(int pCount)
+{
+	particles.resize(pCount,
+		Particle(0.0, 0.0, 0.0, 0.0, Particle::partDefaultRadius));
+}
+
+
 /*
 	Initialize particles positions and velocity
 	to random numbers.

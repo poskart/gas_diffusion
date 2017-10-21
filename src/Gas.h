@@ -11,6 +11,7 @@ public:
 	Gas(int partCount);
 	~Gas() {}
 
+	void setParticlesCount(int pCount);
 	void initializeParticles(HWND * windowHandle);
 	void drawParticles(HDC hdc);
 	void updateParticles(int rightWall, int bottomWall, int timeDelta);
