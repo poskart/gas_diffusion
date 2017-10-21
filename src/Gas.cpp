@@ -14,12 +14,31 @@ Gas::Gas(int partCount)
 		Particle(0.0, 0.0, 0.0, 0.0, Particle::partDefaultRadius));
 }
 
+/*
+	Set number of particles in gas
+*/
 void Gas::setParticlesCount(int pCount)
 {
 	particles.resize(pCount,
 		Particle(0.0, 0.0, 0.0, 0.0, Particle::partDefaultRadius));
 }
 
+void Gas::removeParticle(int index)
+{
+	auto it = particles.begin();
+	it += index;
+	particles.erase(it);
+}
+
+void Gas::insertParticle(Particle * newParticle)
+{
+	particles.push_back(*newParticle);
+}
+
+Particle * Gas::getParticle(int index)
+{
+	return &particles.data()[index];
+}
 
 /*
 	Initialize particles positions and velocity
@@ -71,8 +90,9 @@ void Gas::drawParticles(HDC hdc)
 /*
 	Update particles movement after timeDelta time period.
 */
-void Gas::updateParticles(int width, int height, int timeDelta)
+std::vector<int> Gas::updateParticles(int width, int height, int appId, bool isCoupled, int timeDelta)
 {
+	std::vector<int> lostParticles;
 	Particle * p1 = nullptr, *p2 = nullptr;
 	for (int i = 0; i < particles.size(); ++i)
 	{
@@ -88,9 +108,14 @@ void Gas::updateParticles(int width, int height, int timeDelta)
 				break;
 			}
 		}
-		handleCollisionWalls(*p1, width, height);
+		if (handleCollisionWalls(*p1, width, height, appId, isCoupled))
+		{
+			// Particle is out of the window
+			lostParticles.push_back(i);
+		}
 		p1->updatePos(timeDelta);
 	}
+	return lostParticles;
 }
 
 /*
@@ -119,6 +144,10 @@ inline bool Gas::positionCollides(const double x, const double y,
 	return false;
 }
 
+/*
+	Change two particles (p1 and p2) velocity according to
+	elastic collision
+*/
 void Gas::handleParticlesCollision(Particle & p1, Particle & p2)
 {
 	/*
@@ -136,26 +165,50 @@ void Gas::handleParticlesCollision(Particle & p1, Particle & p2)
 	p2.setYVel(p2.getYVel() - dotProd / norm / norm*(p2.getYPos() - p1.getYPos()));
 }
 
-void Gas::handleCollisionWalls(Particle & p1, int width, int height)
+/*
+	Bounce off the walls of the window and include
+	particles in window if window has been resized.
+*/
+bool Gas::handleCollisionWalls(Particle & p1, int width, int height, int appId, bool isCoupled)
 {
-	// Right wall and left wall
+	bool particleLost = false;
+	// Right wall
 	if (p1.getXPos() + 2 * p1.getRadius() >= width)
 	{
-		// if right wall moved and covered particle (at least half of it)
-		if (p1.getXPos() + p1.getRadius() >= width)
-			p1.setXPos(width - 2*p1.getRadius() - 1);
-		else    //normal bounce off the wall
-			p1.setXVel(-p1.getXVel());
+		// If two apps coupled then check if particle is lost
+		if (appId == 1 && isCoupled)
+		{
+			if (p1.getXPos() + p1.getRadius() >= width)
+				particleLost = true;
+		}
+		else  // bounce of the wall
+		{
+			// if right wall moved and covered particle (at least half of it)
+			if (p1.getXPos() + p1.getRadius() >= width)
+				p1.setXPos(width - 2 * p1.getRadius() - 1);
+			else if(!isCoupled || appId == 2)   //normal bounce off the wall
+				p1.setXVel(-p1.getXVel());
+		}
 	}
+	// Left wall
 	else if (p1.getXPos() <= 0)
 	{
-		// if left wall moved and covered particle (at least half of it)
-		if (p1.getXPos() <= -p1.getRadius())
-			p1.setXPos(1);
-		else    //normal bounce off the wall
-			p1.setXVel(-p1.getXVel());
+		// If two apps coupled then check if particle is lost
+		if (appId == 2 && isCoupled)
+		{
+			if (p1.getXPos() <= -p1.getRadius())
+				particleLost = true;
+		}
+		else
+		{
+			// if left wall moved and covered particle (at least half of it)
+			if (p1.getXPos() <= -p1.getRadius())
+				p1.setXPos(1);
+			else if(!isCoupled || appId == 1)   //normal bounce off the wall
+				p1.setXVel(-p1.getXVel());
+		}
 	}
-	// Bottom wall and top wall
+	// Bottom wall
 	if (p1.getYPos() <= -height)
 	{
 		// if bottom wall moved and covered particle (at least half of it)
@@ -164,6 +217,7 @@ void Gas::handleCollisionWalls(Particle & p1, int width, int height)
 		else    //normal bounce off the wall
 			p1.setYVel(-p1.getYVel());
 	}
+	// Top wall
 	else if (p1.getYPos() >= -2*p1.getRadius())
 	{
 		// if top wall moved and covered particle (at least half of it)
@@ -172,4 +226,5 @@ void Gas::handleCollisionWalls(Particle & p1, int width, int height)
 		else	//normal bounce off the wall
 			p1.setYVel(-p1.getYVel());
 	}
+	return particleLost;
 }

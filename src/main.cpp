@@ -7,7 +7,7 @@
 	Time period for timer to update particles
 	positions and refresh drawing
 */
-const int timerPeriod = 10;
+const int timerPeriod = 20;
 
 // The main window class name.  
 static TCHAR szWindowClass[] = _T("win32app");
@@ -35,6 +35,8 @@ LRESULT CALLBACK WndProc(HWND, UINT, WPARAM, LPARAM);
 ATOM MyRegisterClass(HINSTANCE hInstance);
 BOOL InitInstance(HINSTANCE, int);
 INT_PTR CALLBACK About(HWND, UINT, WPARAM, LPARAM);
+void encodePosVelData(Particle * p, uint32_t * positionXY, uint32_t * velocityXY);
+void decodePosVelData(Particle * p, uint32_t positionXY, uint32_t velocityXY);
 
 /*
 	main()
@@ -120,7 +122,26 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			RECT lpRect;
 			GetClientRect(hWnd, &lpRect);
 			DPtoLP(hdc, (LPPOINT)& lpRect, 2);
-			gasPtr->updateParticles(lpRect.right, -lpRect.bottom, timerPeriod);
+			// Update particles movement and get particles which pass border
+			// to the coupled application
+			std::vector<int> lostParticles = gasPtr->updateParticles(lpRect.right, -lpRect.bottom,
+				appID, coupledAppWindowHandle != nullptr, timerPeriod);
+			uint32_t positionXY, velocityXY;
+			for (auto it = lostParticles.begin(); it != lostParticles.end(); ++it)
+			{
+				encodePosVelData(gasPtr->getParticle(*it), &positionXY, &velocityXY);
+				if(appID == 1)
+				{ 
+					SendMessage(coupledAppWindowHandle, WM_GASAPP_LEFT_TO_RIGHT,
+						(WPARAM)positionXY, (LPARAM)velocityXY);
+				}
+				else
+				{
+					SendMessage(coupledAppWindowHandle, WM_GASAPP_RIGHT_TO_LEFT,
+						(WPARAM)positionXY, (LPARAM)velocityXY);
+				}
+				gasPtr->removeParticle(*it);
+			}
 			InvalidateRect(hWnd, NULL, FALSE);
 			
 			// Broadcast message - left app is looking for coupled (right) window
@@ -168,7 +189,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		else   // get regular message from left app
 		{
-
+			Particle p;
+			decodePosVelData(&p, int(wParam), int(lParam));
+			// Set x position near left border (wall)
+			p.setXPos(0.0);
+			gasPtr->insertParticle(&p);
 		}
 	}
 	else if(message == WM_GASAPP_RIGHT_TO_LEFT && appID == 1)
@@ -180,7 +205,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		}
 		else
 		{
+			HDC hdc = GetDC(hWnd);	// get device context
+			SetMapMode(hdc, MM_LOMETRIC);
+			RECT lpRect;
+			GetClientRect(hWnd, &lpRect);
+			DPtoLP(hdc, (LPPOINT)& lpRect, 2);
 
+			Particle p;
+			decodePosVelData(&p, int(wParam), int(lParam));
+			// Set x position near right border (wall)
+			p.setXPos(lpRect.right - 2*p.getRadius() - 1);
+			gasPtr->insertParticle(&p);
 		}
 	}
 	else  // Default message handle for Windows
@@ -257,4 +292,42 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	SetTimer(hWnd, 1, timerPeriod, NULL);
 
 	return TRUE;
+}
+
+/*
+	Encode particle positions and velocity of the particle
+	into two 32-bit words (positionXY, velocityXY)
+*/
+void encodePosVelData(Particle * p, uint32_t * positionXY, uint32_t * velocityXY)
+{
+	short posX = short(p->getXPos());
+	short posY = short(p->getYPos());
+	double velXDouble = p->getXVel();
+	double velYDouble = p->getYVel();
+	short velX, velY;
+	// Convert double to int
+	velXDouble *= 1000;
+	velYDouble *= 1000;
+	velX = short(velXDouble);
+	velY = short(velYDouble);
+	*positionXY = (posX << 16) | posY;
+	*velocityXY = (velX << 16) | velY;
+}
+
+/*
+	Decode two 32-bit words corresponding to position
+	and velocity in both x,y directions and fill 
+	Particle object with this data
+*/
+void decodePosVelData(Particle * p, uint32_t positionXY, uint32_t velocityXY)
+{
+	short posX = (positionXY & 0xffff0000) >> 16;
+	short posY = positionXY & 0x0000ffff;
+	short velX = (velocityXY & 0xffff0000) >> 16;
+	short velY = velocityXY & 0x0000ffff;
+
+	p->setXPos(double(posX));
+	p->setYPos(double(posY));
+	p->setXVel(double(velX)/1000.0);
+	p->setYVel(double(velY)/1000.0);
 }

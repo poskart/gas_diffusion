@@ -5,7 +5,7 @@
 class Particle
 {
 public:
-	Particle() {}
+	Particle() : radius(25){}
 	Particle(double xPos, double yPos, double xVel,
 		double yVel, int rad = partDefaultRadius) : x(xPos), y(yPos), vx(xVel), vy(yVel), radius(rad) {}
 	~Particle() {}
