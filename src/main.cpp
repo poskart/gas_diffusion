@@ -1,5 +1,7 @@
 #include "Particle.h"
 #include "Gas.h"
+#include <stdio.h>
+#include <shellapi.h>
 
 const int timerPeriod = 10;
 
@@ -9,7 +11,11 @@ static TCHAR szWindowClass[] = _T("win32app");
 // The string that appears in the application's title bar.  
 static TCHAR szTitle[] = _T("Win32 Guided Tour Application");
 
+// Application instance handle
 HINSTANCE hInst;
+
+// Application ID used to communicate
+int appID;
 
 // Global gas object
 Gas gas(17);
@@ -29,7 +35,20 @@ int CALLBACK WinMain(
 {
 	// Some macros to mark hPrevIn..and lpCmd.. parameters as unused
 	UNREFERENCED_PARAMETER(hPrevInstance);
-	UNREFERENCED_PARAMETER(lpCmdLine);
+	
+	LPWSTR *szArglist;
+	int nArgs;
+	int i;
+
+	// Get application ID from command line
+	szArglist = CommandLineToArgvW(GetCommandLineW(), &nArgs);
+	if (NULL == szArglist)
+	{
+		wprintf(L"CommandLineToArgvW failed\n");
+		return 0;
+	}
+	else
+		appID = _wtoi(szArglist[nArgs - 1]);
 
 	// Create and register window object
 	if (!MyRegisterClass(hInstance))
@@ -43,9 +62,7 @@ int CALLBACK WinMain(
 	}
 	// Perform application initialization:
 	if (!InitInstance(hInstance, nCmdShow))
-	{
 		return FALSE;
-	}
 
 	// Main message loop:  
 	MSG msg;
